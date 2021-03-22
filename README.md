@@ -4,3 +4,9 @@ Remnote plugin for neovim using telescope
 Will look something like this ![this](remnote.png)
 
 WIP, not working yet.
+
+# install
+
+```vim
+Plug 'naefl/telescope-remnote'
+```
