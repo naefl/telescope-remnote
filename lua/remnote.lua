@@ -72,22 +72,32 @@ local function parseRem(filetype, sel)
     return string.format('%s::```%s \n %s```',front, filetype , rest)
 end
 
+local function _get(cmd)
+    local start = os.clock()
+    local res = vim.fn.json_decode(vim.fn.system(cmd))
+    print(os.clock()-start)
+    return res
+end
 
-local function search_and_apply(filetype, url, payload)
+
+local function search_and_apply(filetype, url, payload, result_index)
     local get_by_name = deepCopy(base)
     get_by_name["name"] = filetype
     local get_by_url = BASE .. "/get_by_name"
-    local cmd  =  string.format('%s | jq  "._id" | xargs -I{} %s',curlEncode(get_by_url, get_by_name), curlEncode(url,payload))
-    return vim.fn.json_decode(vim.fn.system(cmd))
+    local found_rems = _get(curlEncode(get_by_url, get_by_name))
+    local best_hit = found_rems["_id"]
+    payload[result_index] = best_hit
+    return _get(curlEncode(url,payload))
 end
 
 local function post(sel, filetype)
     local  payload = deepCopy(base)
     payload["text"] = parseRem( filetype, sel)
     -- this is just the xargs wildcard
-    payload["parentId"] = "{}"
+    local result_index = "parentId"
     local url = BASE .. "/create"
-    local r = search_and_apply(filetype, url, payload)
+    local r = search_and_apply(filetype, url, payload, result_index)
+    return r
 end
 
 local function _get_children(json, children, count)
@@ -103,12 +113,12 @@ local function _get_children(json, children, count)
                         -- this is just the xargs wildcard
                         payload["remId"] = child
                         count =  count + 1
-                        json = vim.fn.json_decode(vim.fn.system(curlEncode(url, payload)))
-                        _get_children(json, children)
+                        json = _get(curlEncode(url, payload))
+                        _get_children(json, children, count)
                     end
                 end
             end
-            if k == "nameAsMarkdown" then
+            if k == "nameAsMarkdown" or k=="contentAsMarkdown" then
                 children[id] = v
             end
         end
@@ -118,9 +128,10 @@ end
 local function get(filetype)
     local payload = deepCopy(base)
     local url = BASE .. "/get"
-    -- this is just the xargs wildcard
-    payload["remId"] = "{}"
-    local res = search_and_apply(filetype, url, payload)
+    -- index where the result of the search should be used for
+    -- the next query
+    local result_index = "remId"
+    local res = search_and_apply(filetype, url, payload, result_index)
     local children ={}
     local count = 1
     _get_children(res, children, count)
